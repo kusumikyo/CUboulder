@@ -1,0 +1,216 @@
+---
+title: "New York Shooting Incidents Analysis 2020"
+author: "Kyle Wong"
+date: "12/4/2021"
+output:
+  pdf_document: default
+  html_document: default
+font-family: Helvetica
+
+---
+```{r, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(tidyverse)
+library(tidyr)
+library(tinytex)
+library(readr)
+```
+
+In this report, we will study about our findings about the shooting incidents in New York city based on the data collected by New York Police Department from year 2006 to 2020.
+
+
+## Shooting Incidents is climbing up to the year high since the early 2010s
+```{r, echo=FALSE}
+url1 <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+NYPD <- read_csv((url1), 
+    col_types = cols(INCIDENT_KEY = col_skip(), 
+        OCCUR_DATE = col_date(format = "%m/%d/%Y"), 
+        OCCUR_TIME = col_time(format = "%H:%M:%S"), 
+        PRECINCT = col_skip(), JURISDICTION_CODE = col_skip(), 
+        X_COORD_CD = col_skip(), Y_COORD_CD = col_skip(), 
+        Latitude = col_skip(), Longitude = col_skip(), 
+        Lon_Lat = col_skip()))
+View(NYPD)
+
+NYPD <- NYPD %>%
+  mutate(year = lubridate::year(OCCUR_DATE),
+         month= lubridate::month(OCCUR_DATE),
+         day = lubridate::day(OCCUR_DATE),
+         wday = lubridate::wday(OCCUR_DATE),
+         Incidents = 1
+         )
+
+NYPD <- NYPD %>%
+  mutate(PERP_FOUND = PERP_SEX != "UNKNOWN")
+
+NYPD_yearly <- NYPD %>%
+  select(year,Incidents) %>%
+  group_by(year) %>%
+  summarize(total_shootings = sum(Incidents))
+
+ggplot(NYPD_yearly, aes(x=year,y=total_shootings)) +
+  geom_col(fill = "deepskyblue") +
+  theme() +
+  geom_text(aes(x=year,y=total_shootings, label = total_shootings),
+            position = position_dodge(width = 1),
+            vjust = -0.5, size=3)
+```
+
+The shooting incident has increased dramatically in the 2020 which was last seen in the year 2011. That interests us to study into the incidents characteristics like the race and age group who is being the shooter and victim.
+
+
+## Increasing Incidents with Unknown Perpetrators Over the Years
+```{r, echo=FALSE, include=FALSE}
+NYPD_perpfound <- NYPD %>%
+  select(year,Incidents,PERP_FOUND) %>%
+  group_by(year,PERP_FOUND) %>%
+  summarize(total_shootings = sum(Incidents)
+            )
+NYPD_perpfound2 <- NYPD_perpfound %>%
+ group_by(year) %>%
+  mutate(grandtotal = sum(total_shootings)) %>%
+  mutate(ratio = total_shootings / grandtotal)
+NYPD_perpfound2 %>%
+  rename(unknown_perp = total_shootings)
+```
+```{r, echo=FALSE}
+ggplot(NYPD_perpfound2, aes(x=year,y=total_shootings, fill = PERP_FOUND)) +
+  geom_col() +
+  theme() +
+  geom_text(aes(x=year, y=total_shootings, label = scales::percent(ratio), group = PERP_FOUND), 
+            position="stack",
+            hjust = 0.5, vjust = 3, size = 2)
+```
+
+Back in the year 2006, 93.63% of shooting incidents was able to catch the perpetrators. Above chart shows increasing trend that more and more incidents is not able to find the perpetrators, raising a fact that New York require improvement in police force. For example more security cameras needed. We do not have enough budget to install cameras in every areas. Therefore, we need to decide where should we locate our new cameras.
+
+
+## Locations where most shooting happens from 2018 to 2020
+```{r, echo=FALSE, include=FALSE}
+shootingLocation <- NYPD %>%
+  select(LOCATION_DESC,Incidents,year) %>%
+  filter(LOCATION_DESC != c("UNKNOWN")) %>%
+  filter(LOCATION_DESC != c("NONE")) %>%
+  filter(year >= 2018) %>%
+  group_by(LOCATION_DESC,year) %>%
+  summarize(total_shootings = sum(Incidents)) %>%
+  mutate(year=as.character(year)) %>%
+  arrange(desc(total_shootings,year))
+```
+```{r, echo=FALSE}
+ggplot(shootingLocation, aes(x=year,y=total_shootings, color=LOCATION_DESC)) +
+  geom_point(show.legend = FALSE) +
+  geom_text(aes(x=year, label=LOCATION_DESC), hjust=0.5,vjust=3,size=3) +
+  theme(legend.position = "none")
+```
+
+From above chart, we can see that most shootings happens in the multi-dwelling public house and appartments where many familes are lived together. These areas has property of low income and high population density, which may increase risk of conflicts & crimes.
+
+
+## Portion of shooting incidents by perpetrators & victims race
+
+```{r, echo=FALSE, include=FALSE}
+shootingRace <- NYPD %>%
+  select(year,VIC_RACE,PERP_RACE,Incidents) %>%
+  filter(PERP_RACE != "UNKNOWN") %>%
+  filter(year >= 2018) %>%
+  group_by(year,PERP_RACE,VIC_RACE) %>%
+  summarize(total_shootings = sum(Incidents)) %>%
+  group_by(year) %>%
+  mutate(overall_shootings = sum(total_shootings),
+         percent_of_total = total_shootings / overall_shootings)  
+```
+```{r, echo=FALSE}
+ggplot(shootingRace, aes(fill = 1-percent_of_total,x=PERP_RACE, y= VIC_RACE),
+  color="#000000", fill="deepskyblue") +
+  geom_tile(color = "white") +
+  geom_text(aes(x=PERP_RACE, y= VIC_RACE, label = scales::percent(round(percent_of_total, digits = 2))), color="white",size = 2)+
+  coord_fixed() + 
+  facet_wrap(~ year) +
+  theme(legend.position = "none") +
+  theme(axis.text.x=element_text(size=rel(0.5), angle=90),
+        axis.text.y=element_text(size=rel(0.5)))
+```
+
+53% of shooting come from black race shooting each other, and then the cases of black and white hispanic race shooting each other is not that high but still considerable 17% of year 2020. White hispanic race shooting each other also 7% of total incidents. So these 2 race have contributed 77% of all caught shootings. Further studies needed to find out if they have difficulties finding jobs resulting in increased risk of conflicts and crime. Next, we will look into the same chart based on age groups to see if it validates our hypothesis.
+
+
+## Portion of shooting incidents by perpetrators & victims age groups
+
+```{r, echo=FALSE, include=FALSE}
+shootingAge <- NYPD %>%
+  select(year,VIC_AGE_GROUP,PERP_AGE_GROUP,Incidents) %>%
+  filter(PERP_AGE_GROUP != "UNKNOWN") %>%
+  filter(year >= 2018) %>%
+  group_by(year,PERP_AGE_GROUP,VIC_AGE_GROUP) %>%
+  summarize(total_shootings = sum(Incidents)) %>%
+  group_by(year) %>%
+  mutate(year_total = sum(total_shootings)) %>%
+  mutate(percent_vs_year = total_shootings / year_total)
+
+```
+```{r, echo=FALSE}
+ggplot(shootingAge, aes(fill = percent_vs_year,x=PERP_AGE_GROUP, y= VIC_AGE_GROUP),
+       color="#000000", fill="deepskyblue") +
+  geom_tile(color = "white") +
+  geom_text(aes(x=PERP_AGE_GROUP, y= VIC_AGE_GROUP, label = scales::percent(round(percent_vs_year,2))), color="white",size = 2)+
+  coord_fixed() +
+  facet_wrap(~ year) +
+  theme(legend.position = "none") +
+  theme(axis.text.x=element_text(size=rel(0.5), angle=90),
+        axis.text.y=element_text(size=rel(0.5)))
+```
+
+72% of all shootings in the 2020 come from age group of 18-24 & 25-44, these are the age groups with most financial pressure. Within these groups, 43% of shooting come from age group 25-44 shootings, which are the groups with relatively lower ability to find job versus the 18-24s. This implies possibilities of crimes and conflicts. Also, the shooting from 18-24 perpetrators into the 25-44s may imply family conflicts as well. Which we might need social workers to study further. However, since the financial issue sounds more obvious for crimes and conflicts, we may want to study the relationship between unemployment rate and shooting incidents number.
+
+
+## Model: Unemployment rate versus shooting incidents of 18-24 & 25-44 age group
+
+```{r, echo=FALSE}
+url2 <- "https://data.ny.gov/api/views/5hyu-bdh8/rows.csv?accessType=DOWNLOAD"
+
+Unemployment_Statistics <- read_csv("~/Downloads/Local_Area_Unemployment_Statistics__Beginning_1976.csv", 
+    col_types = cols(Month = col_character(), `Labor Force` = col_integer(), 
+        Employed = col_integer(), Unemployed = col_integer()))
+View(Unemployment_Statistics)
+
+shootingAge2 <- NYPD %>%
+  mutate(year = lubridate::year(OCCUR_DATE)) %>%
+  mutate(PERP_AGE_GROUP = as.character(PERP_AGE_GROUP),
+         Incidents = 1) %>%
+  filter(PERP_AGE_GROUP %in% c("18-24","25-44")) %>%
+  group_by(year) %>%
+    summarize(total_shootings = sum(Incidents))
+
+unemployment <- Unemployment_Statistics %>%
+  filter(Area == "New York State") %>%
+  group_by(Year) %>%
+  summarize(labourForce = mean(`Labor Force`),
+            employed = mean(Employed),
+            unemployed = mean(Unemployed))
+unemployment <- unemployment %>%
+  rename(year = Year)
+NYPD_unemployment <- shootingAge2 %>%
+  full_join(unemployment,by = c("year"))
+NYPD_prepfound_unemployment <- NYPD_unemployment %>%
+  mutate(unemployment_rate = unemployed/labourForce*100)
+mod <- lm(total_shootings ~ unemployment_rate, data = NYPD_prepfound_unemployment)
+NYPD_prepfound_unemployment_pred <- NYPD_prepfound_unemployment %>%
+  ungroup() %>%
+  mutate(year = as.character(year)) %>%
+  mutate(pred = predict(mod))
+NYPD_prepfound_unemployment_pred %>%
+  ggplot() + geom_point(aes(x=unemployment_rate, y=total_shootings), color = "blue") +
+  geom_point(aes(x=unemployment_rate,y=pred),color="red")
+
+summary(mod)
+```
+
+# Conclusion
+1. Social workers needed to do family visit and aid the high density residential areas to provide help in job seeking activities, minimize neighborhood conflicts.
+2. Cameras needed to be installed in high density residential areas to reduce uncaught shootings.
+3. Increased promotion in racial equality to help people from all races to be treated fairly.
+
